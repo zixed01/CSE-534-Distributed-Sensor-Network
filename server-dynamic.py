@@ -123,84 +123,92 @@ def rerun_setup_for_cluster():
         csv_writer.writerow(["Cluster", "DTG", "Reelection"])
 
     while True:
-        try:
-            command = command_queue.get(timeout=0.5)
+        commands = []
+        cluster_ids = []
 
-            if command.startswith("RERUN_SETUP"):
-                parts = command.split(":")
+        if not command_queue.empty():
 
-                cluster_id = parts[1]
-                cluster_id = int(cluster_id)
+            while not command_queue.empty():
 
-                print(f"Notifying all nodes in Cluster {cluster_id} to "
-                     f"rerun the setup process")
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                    if cluster_id in latency_reports:
-                        for hostname, (_, ip) in \
-                            latency_reports[cluster_id].items():
-                            setup_message = "RERUN_SETUP"
-                            sock.sendto(setup_message.encode(),
-                                (ip, SINK_COMMAND_PORT))
-                            print(f"Notified {hostname} at {ip} "
-                                f"to rerun setup.")
+                try:
+                    command = command_queue.get(timeout=0.5)
+                    commands.append(command)
 
-                        time.sleep(30)
+                except queue.Empty:
+                    break
 
-                        print("Reevaluating cluster heads")
-                        cluster_heads = select_dyn_cluster_heads(cluster_id)
-                        inform_nodes_of_new_dyn_cluster_heads(cluster_id,
-                            cluster_heads)
-                        print("Cluster head reevaluation and "
-                            "notification complete.")
+            for command in commands:
 
-                        with open(output_file, mode='a', newline='') as csvfile:
-                            csv_writer = csv.writer(csvfile)
+                if command.startswith("RERUN_SETUP"):
+                    parts = command.split(":")
 
-                            csv_writer.writerow([
-                                cluster_id, time.strftime("%Y%m%d%H%M%S",
-                                    time.gmtime()), "1"
-                            ])
+                    cluster_id = int(parts[1])
+                    cluster_ids.append(cluster_id)
 
-                    else:
-                        print(f"No nodes found for Cluster: {cluster_id}")
+                    print(f"Notifying all nodes in Cluster {cluster_id} to "
+                         f"rerun the setup process")
+                    with socket.socket(socket.AF_INET,
+                        socket.SOCK_DGRAM) as sock:
+                        if cluster_id in latency_reports:
+                            for hostname, (_, ip) in \
+                                latency_reports[cluster_id].items():
+                                setup_message = "RERUN_SETUP"
+                                sock.sendto(setup_message.encode(),
+                                    (ip, SINK_COMMAND_PORT))
+                                print(f"Notified {hostname} at {ip} "
+                                    f"to rerun setup.")
 
-        except queue.Empty:
-            pass
+            time.sleep(30)
+
+            print("Reevaluating cluster heads")
+            cluster_heads = select_dyn_cluster_heads(cluster_ids)
+            inform_nodes_of_new_dyn_cluster_heads(cluster_ids, cluster_heads)
+            print("Cluster head reevaluation and notification complete.")
+
+            with open(output_file, mode='a', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile)
+
+                for i in range(len(cluster_ids)):
+                    csv_writer.writerow([cluster_ids[i],
+                        time.strftime("%Y%m%d%H%M%S", time.gmtime()), "1"])
+
 # after a RERUN_SETUP is completed, this function selects the new cluster head
 # for the cluster requested
-def select_dyn_cluster_heads(cluster_id):
+def select_dyn_cluster_heads(cluster_ids):
     global cluster_heads
 
-    for cid, reports in latency_reports.items():
-        if cid == int(cluster_id):
-            if reports:
-                cluster_heads[cid] = min(reports.items(),
-                    key=lambda x:x[1][0])
+    for cluster_id in cluster_ids:
+        for cid, reports in latency_reports.items():
+            if cid == int(cluster_id):
+                if reports:
+                    cluster_heads[cid] = min(reports.items(),
+                        key=lambda x:x[1][0])
 
     return cluster_heads
 
 # after a RERUN_SETUP is completed, this function informs all nodes in the
 # cluster of the new cluster head
-def inform_nodes_of_new_dyn_cluster_heads(cluster_id, cluster_heads):
-    print(f"Cluster head selected: {cluster_heads[cluster_id]}")
+def inform_nodes_of_new_dyn_cluster_heads(cluster_ids, cluster_heads):
+    for cluster_id in cluster_ids:
+        print(f"Cluster head selected: {cluster_heads[cluster_id]}")
 
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            for cid, cluster_head_info in cluster_heads.items():
-                if cid == int(cluster_id):
-                    cluster_head_hostname = cluster_head_info[0]
-                    cluster_head_ip = cluster_head_info[1]
-                    for hostname, (_, ip) in latency_reports[cid].items():
-                        message = f"HEAD:{cid}:" \
-                            f"{cluster_head_hostname}:{cluster_head_ip}"
-                        try:
-                            sock.sendto(message.encode(), (ip,
-                                SINK_RESPONSE_PORT))
-                            print(f"Sent cluster head info: {hostname}"
-                                f" ({ip}): {message}")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                for cid, cluster_head_info in cluster_heads.items():
+                    if cid == int(cluster_id):
+                        cluster_head_hostname = cluster_head_info[0]
+                        cluster_head_ip = cluster_head_info[1]
+                        for hostname, (_, ip) in latency_reports[cid].items():
+                            message = f"HEAD:{cid}:" \
+                                f"{cluster_head_hostname}:{cluster_head_ip}"
+                            try:
+                                sock.sendto(message.encode(), (ip,
+                                    SINK_RESPONSE_PORT))
+                                print(f"Sent cluster head info: {hostname}"
+                                    f" ({ip}): {message}")
 
-                        except Exception as e:
-                            print(f"Error: sending cluster head info to"
-                                f"{hostname} ({ip}): {e}")
+                            except Exception as e:
+                                print(f"Error: sending cluster head info to"
+                                    f"{hostname} ({ip}): {e}")
 
 
 # execute phase functions
