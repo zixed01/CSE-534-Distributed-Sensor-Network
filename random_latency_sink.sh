@@ -36,5 +36,5 @@ while [ $SECONDS -lt $END_TIME ]; do
 done
 
 clear_tc
-echo "Traffic control settings cleared for $INTERFACE after an hour."
+echo "Traffic control settings cleared for $INTERFACE after two hours."
 

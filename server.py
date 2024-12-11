@@ -322,8 +322,6 @@ def main():
 
     threading.Thread(target=handle_aggregated_data, daemon=True).start()
 
-
-
     while True:
         time.sleep(1)
 
