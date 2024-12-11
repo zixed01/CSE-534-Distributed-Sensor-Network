@@ -569,7 +569,7 @@ def send_aggregated_data_to_sink():
             except Exception as e:
                 print(f"Error: sending data to sink: {e}")
 
-            if rtt > AVG_RTT * 1.25:
+            if rtt > AVG_RTT * 1.25 or rtt > 0.625:
                 print(f"Current RTT above threshold. Sending RERUN_SETUP"
                     f" request now.")
                 request_rerun_setup()
