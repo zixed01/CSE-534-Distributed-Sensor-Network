@@ -1,3 +1,6 @@
+# Tyler Williams
+# ASU - CSE 534 - Fall 2024
+
 import time
 import socket
 import statistics
